@@ -106,6 +106,7 @@ function init() {
 
     if (isHostedOn(hostname, 'youtube.com')) {
         setInterval(updateYouTubeChannelHeader, 300);
+        setInterval(updateAllLabels, 6000);
     }
 
     if (myself && (myself.href || myself.startsWith('http:') || myself.startsWith('https:')))
@@ -174,12 +175,14 @@ function updateYouTubeChannelHeader() {
             replacement.style.fontWeight = '400';
             replacement.style.lineHeight = '3rem';
             replacement.style.textDecoration = 'none';
+            replacement.style.color = 'black';
         }
         replacement.textContent = lastAppliedYouTubeTitle;
         replacement.href = lastAppliedYouTubeUrl;
     }
     updateAllLabels();
     setTimeout(updateAllLabels, 2000);
+    setTimeout(updateAllLabels, 4000);
 }
 
 function updateAllLabels(refresh) {
@@ -448,7 +451,7 @@ function getIdentifierInternal(urlstr) {
     if (isHostedOn(host, 'reddit.com')) {
         var pathname = url.pathname.replace('/u/', '/user/');
         if (!pathname.startsWith('/user/') && !pathname.startsWith('/r/')) return null;
-        if(pathname.includes('/comments/')) return null;
+        if(pathname.includes('/comments/') && hostname == 'reddit.com') return null;
         return 'reddit.com' + takeFirstPathComponents(pathname, 2);
     }
     if (isHostedOn(host, 'twitter.com')) {
