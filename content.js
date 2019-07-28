@@ -29,14 +29,14 @@ function fixupSiteStyles() {
     }
     else if (domainIs(hostname, 'tumblr.com')) {
         addStyleSheet(`
-            .assigned-label-transphobic { outline: 2px solid #991515 !important; }
-            .assigned-label-t-friendly { outline: 1px solid #77B91E !important; }
+            .assigned-label-transphobic { outline: 2px solid var(--ShinigamiEyesTransphobic) !important; }
+            .assigned-label-t-friendly { outline: 1px solid var(--ShinigamiEyesTFriendly) !important; }
         `);
     }
     else if (hostname.indexOf('wiki') != -1) {
         addStyleSheet(`
-            .assigned-label-transphobic { outline: 1px solid #991515 !important; }
-            .assigned-label-t-friendly { outline: 1px solid #77B91E !important; }
+            .assigned-label-transphobic { outline: 1px solid var(--ShinigamiEyesTransphobic) !important; }
+            .assigned-label-t-friendly { outline: 1px solid var(--ShinigamiEyesTFriendly) !important; }
         `);
     }
     else if (hostname == 'twitter.com') {
@@ -92,6 +92,9 @@ function init() {
         setInterval(updateYouTubeChannelHeader, 300);
         setInterval(updateAllLabels, 6000);
     }
+    if (hostname == 'twitter.com') {
+        setInterval(updateTwitterClasses, 800);
+    }
     console.log('Self: ' + myself);
     maybeDisableCustomCss();
     updateAllLabels();
@@ -124,6 +127,14 @@ function init() {
 var lastRightClickedElement = null;
 var lastAppliedYouTubeUrl = null;
 var lastAppliedYouTubeTitle = null;
+function updateTwitterClasses() {
+    for (const a of document.querySelectorAll('a')) {
+        if (a.assignedCssLabel && !a.classList.contains('has-assigned-label')) {
+            a.classList.add('assigned-label-' + a.assignedCssLabel);
+            a.classList.add('has-assigned-label');
+        }
+    }
+}
 function updateYouTubeChannelHeader() {
     var url = window.location.href;
     var title = document.getElementById('channel-title');
@@ -164,6 +175,7 @@ function updateAllLabels(refresh) {
     solvePendingLabels();
 }
 var knownLabels = {};
+var currentlyAppliedTheme = '_none_';
 var labelsToSolve = [];
 function solvePendingLabels() {
     if (!labelsToSolve.length)
@@ -172,8 +184,16 @@ function solvePendingLabels() {
     var tosolve = labelsToSolve;
     labelsToSolve = [];
     browser.runtime.sendMessage({ ids: uniqueIdentifiers, myself: myself }, (response) => {
+        const theme = response[':theme'];
+        if (theme != currentlyAppliedTheme) {
+            if (currentlyAppliedTheme)
+                document.body.classList.remove('shinigami-eyes-theme-' + currentlyAppliedTheme);
+            if (theme)
+                document.body.classList.add('shinigami-eyes-theme-' + theme);
+            currentlyAppliedTheme = theme;
+        }
         for (const item of tosolve) {
-            var label = response[item.identifier];
+            const label = response[item.identifier];
             knownLabels[item.identifier] = label || '';
             applyLabel(item.element, item.identifier);
         }
@@ -311,6 +331,9 @@ function getIdentifierFromElementImpl(element) {
             // post Comments link
             if (dataset.testid == 'UFI2CommentsCount/root')
                 return null;
+            // notification
+            if (dataset.testid == 'notif_list_item_link')
+                return null;
             // post Comments link
             if (dataset.commentPreludeRef)
                 return null;
@@ -342,8 +365,24 @@ function getIdentifierFromElementImpl(element) {
             }
         }
     }
-    if (dataset && dataset.expandedUrl)
-        return getIdentifierFromURLImpl(tryParseURL(dataset.expandedUrl));
+    else if (hostname == 'twitter.com') {
+        if (dataset && dataset.expandedUrl)
+            return getIdentifier(dataset.expandedUrl);
+        if (element.href.startsWith('https://t.co/')) {
+            const title = element.title;
+            if (title && (title.startsWith('http://') || title.startsWith('https://')))
+                return getIdentifier(title);
+            const content = element.textContent;
+            if (!content.includes(' ') && content.includes('.') && !content.includes('…'))
+                return getIdentifier('http://' + content);
+        }
+    }
+    else if (domainIs(hostname, 'wikipedia.org')) {
+        if (element.classList.contains('interlanguage-link-target'))
+            return null;
+    }
+    if (element.classList.contains('tumblelog'))
+        return element.textContent.substr(1) + '.tumblr.com';
     const href = element.href;
     if (href && !href.endsWith('#'))
         return getIdentifierFromURLImpl(tryParseURL(href));
@@ -388,6 +427,7 @@ function getIdentifierFromURLImpl(url) {
     if (url.pathname.includes('/badge_member_list/'))
         return null;
     let host = url.hostname;
+    const searchParams = url.searchParams;
     if (domainIs(host, 'web.archive.org')) {
         const match = captureRegex(url.href, /\/web\/\w+\/(.*)/);
         if (!match)
@@ -397,7 +437,7 @@ function getIdentifierFromURLImpl(url) {
     if (host.startsWith('www.'))
         host = host.substring(4);
     if (domainIs(host, 'facebook.com')) {
-        const fbId = url.searchParams.get('id');
+        const fbId = searchParams.get('id');
         const p = url.pathname.replace('/pg/', '/');
         return 'facebook.com/' + (fbId || getPartialPath(p, p.startsWith('/groups/') ? 2 : 1).substring(1));
     }
@@ -439,7 +479,7 @@ function getIdentifierFromURLImpl(url) {
         if (url.hash || url.pathname.includes(':'))
             return null;
         if (url.pathname.startsWith('/wiki/'))
-            return 'wikipedia.org' + getPartialPath(url.pathname, 2);
+            return 'wikipedia.org' + decodeURIComponent(getPartialPath(url.pathname, 2));
         else
             return null;
     }
@@ -449,6 +489,14 @@ function getIdentifierFromURLImpl(url) {
             return m + '.blogspot.com';
         else
             return null;
+    }
+    else if (host.includes('google.')) {
+        if (url.pathname == '/search' && searchParams.get('stick') && !searchParams.get('tbm') && !searchParams.get('start')) {
+            const q = searchParams.get('q');
+            if (q)
+                return 'wikipedia.org/wiki/' + q.replace(/\s/g, '_');
+        }
+        return null;
     }
     else {
         if (host.startsWith('m.'))
@@ -465,7 +513,7 @@ function getSnippet(node) {
             return node;
         if (hostname == 'reddit.com' && (classList.contains('scrollerItem') || classList.contains('thing') || classList.contains('Comment')))
             return node;
-        if (hostname == 'twitter.com' && (classList.contains('stream-item')))
+        if (hostname == 'twitter.com' && (classList.contains('stream-item') || classList.contains('permalink-tweet-container') || node.tagName == 'ARTICLE'))
             return node;
         if (hostname == 'disqus.com' && (classList.contains('post-content')))
             return node;

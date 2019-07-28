@@ -1,7 +1,7 @@
 var browser = browser || chrome;
 const PENDING_SUBMISSIONS = ':PENDING_SUBMISSIONS';
 const MIGRATION = ':MIGRATION';
-const CURRENT_VERSION = 100019;
+const CURRENT_VERSION = 100020;
 // If a user labels one of these URLs, they're making a mistake. Ignore the label.
 // This list includes:
 // * Social networks that are not supported
@@ -251,7 +251,8 @@ const needsInfiniteResubmissionWorkaround = [
 var overrides = null;
 var accepted = false;
 var installationId = null;
-browser.storage.local.get(['overrides', 'accepted', 'installationId'], v => {
+var theme = '';
+browser.storage.local.get(['overrides', 'accepted', 'installationId', 'theme'], v => {
     if (!v.installationId) {
         installationId = (Math.random() + '.' + Math.random() + '.' + Math.random()).replace(/\./g, '');
         browser.storage.local.set({ installationId: installationId });
@@ -261,6 +262,7 @@ browser.storage.local.get(['overrides', 'accepted', 'installationId'], v => {
     }
     accepted = v.accepted;
     overrides = v.overrides || {};
+    theme = v.theme;
     const migration = overrides[MIGRATION] || 0;
     if (migration < CURRENT_VERSION) {
         for (const key of Object.getOwnPropertyNames(overrides)) {
@@ -294,13 +296,27 @@ async function loadBloomFilter(name) {
     bloomFilters.push(b);
 }
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.setTheme) {
+        theme = message.setTheme;
+        browser.storage.local.set({ theme: message.setTheme });
+        chrome.tabs.query({}, function (tabs) {
+            for (var i = 0; i < tabs.length; ++i) {
+                try {
+                    browser.tabs.sendMessage(tabs[i].id, { updateAllLabels: true });
+                }
+                catch (e) { }
+            }
+        });
+    }
     if (message.acceptClicked !== undefined) {
         accepted = message.acceptClicked;
         browser.storage.local.set({ accepted: accepted });
-        browser.tabs.remove(sender.tab.id);
         if (accepted && uncommittedResponse)
             saveLabel(uncommittedResponse);
         uncommittedResponse = null;
+    }
+    if (message.closeCallingTab) {
+        browser.tabs.remove(sender.tab.id);
         return;
     }
     const response = {};
@@ -325,6 +341,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 response[id] = bloomFilter.name;
         }
     }
+    response[':theme'] = theme;
     sendResponse(response);
 });
 loadBloomFilter('transphobic');
@@ -339,6 +356,7 @@ function createContextMenu(text, id) {
             "*://*.youtube.com/*",
             "*://*.reddit.com/*",
             "*://*.twitter.com/*",
+            "*://*.t.co/*",
             "*://medium.com/*",
             "*://disqus.com/*",
             "*://*.tumblr.com/*",
@@ -353,6 +371,8 @@ function createContextMenu(text, id) {
 createContextMenu('Mark as anti-trans', 'mark-transphobic');
 createContextMenu('Mark as t-friendly', 'mark-t-friendly');
 createContextMenu('Clear', 'mark-none');
+browser.contextMenus.create({ type: 'separator' });
+createContextMenu('Settings', 'options');
 createContextMenu('Help', 'help');
 var uncommittedResponse = null;
 async function submitPendingRatings() {
@@ -412,9 +432,18 @@ function openHelp() {
         url: browser.extension.getURL('help.html')
     });
 }
+function openOptions() {
+    browser.tabs.create({
+        url: browser.extension.getURL('options.html')
+    });
+}
 browser.contextMenus.onClicked.addListener(function (info, tab) {
     if (info.menuItemId == 'help') {
         openHelp();
+        return;
+    }
+    if (info.menuItemId == 'options') {
+        openOptions();
         return;
     }
     const tabId = tab.id;
