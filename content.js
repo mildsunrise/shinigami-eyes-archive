@@ -127,7 +127,12 @@ function init() {
 var lastRightClickedElement = null;
 var lastAppliedYouTubeUrl = null;
 var lastAppliedYouTubeTitle = null;
+var lastAppliedTwitterUrl = null;
 function updateTwitterClasses() {
+    if (location.href != lastAppliedTwitterUrl) {
+        setTimeout(updateAllLabels, 200);
+        lastAppliedTwitterUrl = location.href;
+    }
     for (const a of document.querySelectorAll('a')) {
         if (a.assignedCssLabel && !a.classList.contains('has-assigned-label')) {
             a.classList.add('assigned-label-' + a.assignedCssLabel);
@@ -137,9 +142,9 @@ function updateTwitterClasses() {
 }
 function updateYouTubeChannelHeader() {
     var url = window.location.href;
-    var title = document.getElementById('channel-title');
-    if (title && title.tagName == 'H3')
-        title = null; // search results, already a link
+    var title = document.querySelector('#channel-header ytd-channel-name yt-formatted-string');
+    if (title && !title.parentElement.offsetParent)
+        title = null;
     var currentTitle = title ? title.textContent : null;
     if (url == lastAppliedYouTubeUrl && currentTitle == lastAppliedYouTubeTitle)
         return;
@@ -215,7 +220,7 @@ function applyLabel(a, identifier) {
 function initLink(a) {
     var identifier = getIdentifier(a);
     if (!identifier) {
-        if (hostname == 'youtube.com')
+        if (hostname == 'youtube.com' || hostname == 'twitter.com')
             applyLabel(a, '');
         return;
     }

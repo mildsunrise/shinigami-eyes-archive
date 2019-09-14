@@ -1,7 +1,7 @@
 var browser = browser || chrome;
 const PENDING_SUBMISSIONS = ':PENDING_SUBMISSIONS';
 const MIGRATION = ':MIGRATION';
-const CURRENT_VERSION = 100020;
+const CURRENT_VERSION = 100021;
 // If a user labels one of these URLs, they're making a mistake. Ignore the label.
 // This list includes:
 // * Social networks that are not supported
@@ -11,6 +11,7 @@ const CURRENT_VERSION = 100020;
 const badIdentifiersArray = [
     'archive.is',
     'archive.org',
+    'ask.fm',
     'assets.tumblr.com',
     'bing.com',
     'bit.ly',
@@ -20,6 +21,7 @@ const badIdentifiersArray = [
     'curiouscat.me',
     'deviantart.com',
     'discord-store.com',
+    'discord.gg',
     'discordapp.com',
     'disqus.com',
     'docs.google.com',
@@ -76,6 +78,7 @@ const badIdentifiersArray = [
     'facebook.com/permalink.php',
     'facebook.com/pg',
     'facebook.com/photo.php',
+    'facebook.com/places',
     'facebook.com/policies',
     'facebook.com/privacy',
     'facebook.com/profile.php',
@@ -92,6 +95,8 @@ const badIdentifiersArray = [
     'facebook.com/story.php',
     'facebook.com/ufi',
     'facebook.com/watch',
+    'flickr.com',
+    'goo.gl',
     'google.com',
     'googleusercontent.com',
     'i.imgur.com',
@@ -99,6 +104,9 @@ const badIdentifiersArray = [
     'imdb.com',
     'imgur.com',
     'instagram.com',
+    'itunes.apple.com',
+    'ko-fi.com',
+    'linkedin.com',
     'mail.google.com',
     'media.tumblr.com',
     'medium.com',
@@ -212,7 +220,9 @@ const badIdentifiersArray = [
     'reddituploads.com',
     'removeddit.com',
     'sites.google.com',
+    'snapchat.com',
     'soundcloud.com',
+    'steamcommunity.com',
     't.co',
     't.umblr.com',
     'tapatalk.com',
@@ -227,6 +237,7 @@ const badIdentifiersArray = [
     'twitter.com/threader_app',
     'twitter.com/threadreaderapp',
     'twitter.com/who_to_follow',
+    'vimeo.com',
     'vk.com',
     'wikipedia.org',
     'wordpress.com',
@@ -240,14 +251,6 @@ const badIdentifiersArray = [
 const badIdentifiers = {};
 badIdentifiersArray.forEach(x => badIdentifiers[x] = true);
 var lastSubmissionError = null;
-const needsInfiniteResubmissionWorkaround = [
-    '046775268347', '094745034139', '059025030493', '016970595453', '016488055088', '028573603939',
-    '047702135398', '035965787127', '069722626647', '044482561296', '068530257405', '071378971311',
-    '050784255720', '074169481269', '001621982155', '014636303566', '016313013148', '051923868290',
-    '025348057349', '059525793150', '047081840457', '086106188740', '080095076304', '059341889183',
-    '095799487873', '099003666813', '002434495335', '009844923475', '034297166260', '065739632127',
-    '040689448048', '048816243838', '018152001078', '059285890303', '073205501344', '096068619182'
-];
 var overrides = null;
 var accepted = false;
 var installationId = null;
@@ -279,8 +282,6 @@ browser.storage.local.get(['overrides', 'accepted', 'installationId', 'theme'], 
             }
         }
         badIdentifiersArray.forEach(x => delete overrides[x]);
-        if (needsInfiniteResubmissionWorkaround.indexOf(installationId.substring(0, 12)) != -1)
-            overrides[PENDING_SUBMISSIONS] = [];
         overrides[MIGRATION] = CURRENT_VERSION;
         browser.storage.local.set({ overrides: overrides });
     }
