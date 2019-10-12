@@ -41,11 +41,17 @@
 				"*://*.google.pt/*",
 				"*://*.google.se/*"
 			],
-			"js": [
-				"content.js"
-			],
 			"css": [
 				"content.css"
+			]
+		},
+		{
+			"all_frames": true,
+			"matches": [
+				"*://*/*"
+			],
+			"js": [
+				"content.js"
 			]
 		}
 	],
