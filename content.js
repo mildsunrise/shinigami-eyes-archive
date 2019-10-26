@@ -3,6 +3,8 @@ var hostname = typeof (location) != 'undefined' ? location.hostname : '';
 if (hostname.startsWith('www.')) {
     hostname = hostname.substring(4);
 }
+if (hostname == 'mobile.twitter.com')
+    hostname = 'twitter.com';
 if (hostname.endsWith('.reddit.com'))
     hostname = 'reddit.com';
 if (hostname.endsWith('.facebook.com'))
@@ -425,10 +427,9 @@ function tryParseURL(urlstr) {
         return null;
     }
 }
-function getIdentifierFromURLImpl(url) {
+function tryUnwrapNestedURL(url) {
     if (!url)
         return null;
-    // nested urls
     if (url.href.indexOf('http', 1) != -1) {
         if (url.pathname.startsWith('/intl/'))
             return null; // facebook language switch links
@@ -440,12 +441,22 @@ function getIdentifierFromURLImpl(url) {
         });
         for (const value of values) {
             if (value.startsWith('http:') || value.startsWith('https:')) {
-                return getIdentifierFromURLImpl(tryParseURL(value));
+                return tryParseURL(value);
             }
         }
         const newurl = tryParseURL(url.href.substring(url.href.indexOf('http', 1)));
         if (newurl)
-            return getIdentifierFromURLImpl(newurl);
+            return newurl;
+    }
+    return null;
+}
+function getIdentifierFromURLImpl(url) {
+    if (!url)
+        return null;
+    // nested urls
+    const nested = tryUnwrapNestedURL(url);
+    if (nested) {
+        return getIdentifierFromURLImpl(nested);
     }
     // fb group member badge
     if (url.pathname.includes('/badge_member_list/'))
@@ -554,6 +565,13 @@ function getSnippet(node) {
 function getBadIdentifierReason(identifier, url) {
     identifier = identifier || '';
     url = url || '';
+    if (url) {
+        const nested = tryUnwrapNestedURL(tryParseURL(url));
+        if (nested)
+            url = nested.href;
+    }
+    if (identifier == 't.co')
+        return 'Shortened link. Please follow the link and then mark the resulting page.';
     if (identifier.startsWith('reddit.com/user/') ||
         identifier == 'twitter.com/threadreaderapp' ||
         identifier == 'twitter.com/threader_app')
