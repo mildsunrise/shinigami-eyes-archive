@@ -305,9 +305,9 @@ function getCurrentFacebookPageId() {
         return JSON.parse(elem.dataset.gt).profile_owner;
     return null;
 }
-function getIdentifier(link) {
+function getIdentifier(link, originalTarget) {
     try {
-        var k = link instanceof Node ? getIdentifierFromElementImpl(link) : getIdentifierFromURLImpl(tryParseURL(link));
+        var k = link instanceof Node ? getIdentifierFromElementImpl(link, originalTarget) : getIdentifierFromURLImpl(tryParseURL(link));
         if (!k || k.indexOf('!') != -1)
             return null;
         return k.toLowerCase();
@@ -317,7 +317,11 @@ function getIdentifier(link) {
         return null;
     }
 }
-function getIdentifierFromElementImpl(element) {
+function isFacebookPictureLink(element) {
+    var href = element.href;
+    return href && (href.includes('/photo/') || href.includes('/photo.php'));
+}
+function getIdentifierFromElementImpl(element, originalTarget) {
     if (!element)
         return null;
     const dataset = element.dataset;
@@ -332,6 +336,7 @@ function getIdentifierFromElementImpl(element) {
     }
     else if (hostname == 'facebook.com') {
         const parent = element.parentElement;
+        const firstChild = element.firstChild;
         if (parent && (parent.tagName == 'H1' || parent.id == 'fb-timeline-cover-name')) {
             const id = getCurrentFacebookPageId();
             //console.log('Current fb page: ' + id)
@@ -339,7 +344,7 @@ function getIdentifierFromElementImpl(element) {
                 return 'facebook.com/' + id;
         }
         // comment timestamp
-        if (element.firstChild && element.firstChild.tagName == 'ABBR' && element.lastChild == element.firstChild)
+        if (firstChild && firstChild.tagName == 'ABBR' && element.lastChild == firstChild)
             return null;
         // post 'see more'
         if (element.classList.contains('see_more_link'))
@@ -347,6 +352,20 @@ function getIdentifierFromElementImpl(element) {
         // post 'continue reading'
         if (parent && parent.classList.contains('text_exposed_link'))
             return null;
+        // React comment timestamp
+        if (parent && parent.tagName == 'LI')
+            return null;
+        // React post timestamp
+        if (element.getAttribute('role') == 'link' && parent && parent.tagName == 'SPAN' && firstChild && firstChild.tagName == 'SPAN')
+            return null;
+        // React big profile picture (user or page)
+        if (originalTarget instanceof SVGImageElement && isFacebookPictureLink(element) && !getMatchingAncestorByCss(element, '[role=article]')) {
+            return getIdentifier(window.location.href);
+        }
+        // React cover picture
+        if (originalTarget instanceof HTMLImageElement && isFacebookPictureLink(element) && element.getAttribute('aria-label') && !getMatchingAncestorByCss(element, '[role=article]')) {
+            return getIdentifier(window.location.href);
+        }
         if (dataset) {
             const hovercard = dataset.hovercard;
             if (hovercard) {
@@ -541,28 +560,49 @@ function getIdentifierFromURLImpl(url) {
 }
 init();
 var lastGeneratedLinkId = 0;
-function getSnippet(node) {
+function getMatchingAncestor(node, match) {
     while (node) {
-        var classList = node.classList;
-        if (hostname == 'facebook.com' && node.dataset && node.dataset.ftr)
-            return node;
-        if (hostname == 'reddit.com' && (classList.contains('scrollerItem') || classList.contains('thing') || classList.contains('Comment')))
-            return node;
-        if (hostname == 'twitter.com' && (classList.contains('stream-item') || classList.contains('permalink-tweet-container') || node.tagName == 'ARTICLE'))
-            return node;
-        if (hostname == 'disqus.com' && (classList.contains('post-content')))
-            return node;
-        if (hostname == 'medium.com' && (classList.contains('streamItem') || classList.contains('streamItemConversationItem')))
-            return node;
-        if (hostname == 'youtube.com' && node.tagName == 'YTD-COMMENT-RENDERER')
-            return node;
-        if (hostname.endsWith('tumblr.com') && (node.dataset.postId || classList.contains('post')))
+        if (match(node))
             return node;
         node = node.parentElement;
     }
+    return node;
+}
+function getMatchingAncestorByCss(node, cssMatch) {
+    return getMatchingAncestor(node, x => x.matches(cssMatch));
+}
+function getSnippet(node) {
+    if (hostname == 'facebook.com') {
+        return getMatchingAncestor(node, x => {
+            if (x.getAttribute('role') == 'article' && x.getAttribute('aria-labelledby'))
+                return true;
+            var dataset = x.dataset;
+            if (!dataset)
+                return false;
+            if (dataset.ftr)
+                return true;
+            if (dataset.highlightTokens)
+                return true;
+            if (dataset.gt && dataset.vistracking)
+                return true;
+            return false;
+        });
+    }
+    if (hostname == 'reddit.com')
+        return getMatchingAncestorByCss(node, '.scrollerItem, .thing, .Comment');
+    if (hostname == 'twitter.com')
+        return getMatchingAncestorByCss(node, '.stream-item, .permalink-tweet-container, article');
+    if (hostname == 'disqus.com')
+        return getMatchingAncestorByCss(node, '.post-content');
+    if (hostname == 'medium.com')
+        return getMatchingAncestorByCss(node, '.streamItem, .streamItemConversationItem');
+    if (hostname == 'youtube.com')
+        return getMatchingAncestorByCss(node, 'ytd-comment-renderer, ytd-video-secondary-info-renderer');
+    if (hostname == 'tumblr.com')
+        return getMatchingAncestor(node, x => (x.dataset && !!x.dataset.postId) || x.classList.contains('post'));
     return null;
 }
-function getBadIdentifierReason(identifier, url) {
+function getBadIdentifierReason(identifier, url, target) {
     identifier = identifier || '';
     url = url || '';
     if (url) {
@@ -583,6 +623,7 @@ function getBadIdentifierReason(identifier, url) {
     if (url.includes('reddit.com/') && url.includes('/comments/'))
         return 'Only users and subreddits can be labeled, not specific posts.';
     if (url.includes('facebook.com') && (url.includes('/posts/') ||
+        url.includes('/photo/') ||
         url.includes('/photo.php') ||
         url.includes('/photos/')))
         return 'Only pages, users and groups can be labeled, not specific posts or photos.';
@@ -591,7 +632,7 @@ function getBadIdentifierReason(identifier, url) {
     return null;
 }
 var previousConfirmationMessage = null;
-function displayConfirmation(identifier, label, badIdentifierReason, url) {
+function displayConfirmation(identifier, label, badIdentifierReason, url, target) {
     if (previousConfirmationMessage) {
         previousConfirmationMessage.remove();
         previousConfirmationMessage = null;
@@ -604,10 +645,10 @@ function displayConfirmation(identifier, label, badIdentifierReason, url) {
     const background = label == 't-friendly' ? '#eaffcf' :
         label == 'transphobic' ? '#f5d7d7' :
             '#eeeeee';
-    confirmation.style.cssText = `transition: opacity 7s ease-in-out; opacity: 1; position: fixed; padding: 30px 15px; z-index: 99999999; white-space: pre-wrap; top: 200px; left: 30%; right: 30%; background: ${background}; color: black; font-weight: bold; font-family: Arial; box-shadow: 0px 5px 10px #ddd; border: 1px solid #ccc; font-size: 11pt;`;
+    confirmation.style.cssText = `transition: opacity 7s ease-in-out !important; opacity: 1; position: fixed; padding: 30px 15px; z-index: 99999999; white-space: pre-wrap; top: 200px; left: 30%; right: 30%; background: ${background}; color: black; font-weight: bold; font-family: Arial; box-shadow: 0px 5px 10px #ddd; border: 1px solid #ccc; font-size: 11pt;`;
     let text;
     if (label == 'bad-identifier') {
-        const displayReason = getBadIdentifierReason(identifier, url);
+        const displayReason = getBadIdentifierReason(identifier, url, target);
         if (displayReason)
             text = displayReason;
         else if (badIdentifierReason == 'SN')
@@ -640,22 +681,23 @@ function displayConfirmation(identifier, label, badIdentifierReason, url) {
 }
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.updateAllLabels || message.confirmSetLabel) {
-        displayConfirmation(message.confirmSetIdentifier, message.confirmSetLabel, message.badIdentifierReason, message.confirmSetUrl);
+        displayConfirmation(message.confirmSetIdentifier, message.confirmSetLabel, message.badIdentifierReason, message.confirmSetUrl, null);
         updateAllLabels(true);
         return;
     }
     message.contextPage = window.location.href;
-    var target = lastRightClickedElement; // message.elementId ? browser.menus.getTargetElement(message.elementId) : null;
+    const originalTarget = lastRightClickedElement;
+    let target = originalTarget; // message.elementId ? browser.menus.getTargetElement(message.elementId) : null;
     while (target) {
-        if (target.href)
+        if (target instanceof HTMLAnchorElement)
             break;
         target = target.parentElement;
     }
     if (target && target.href != message.url)
         target = null;
-    var identifier = target ? getIdentifier(target) : getIdentifier(message.url);
+    var identifier = target ? getIdentifier(target, originalTarget) : getIdentifier(message.url);
     if (!identifier) {
-        displayConfirmation(null, 'bad-identifier', null, message.url);
+        displayConfirmation(null, 'bad-identifier', null, message.url, target);
         return;
     }
     message.identifier = identifier;

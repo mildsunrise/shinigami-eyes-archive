@@ -1,7 +1,7 @@
 var browser = browser || chrome;
 const PENDING_SUBMISSIONS = ':PENDING_SUBMISSIONS';
 const MIGRATION = ':MIGRATION';
-const CURRENT_VERSION = 100023;
+const CURRENT_VERSION = 100024;
 const badIdentifiersReasons = {};
 const badIdentifiers = {};
 // If a user labels one of these URLs, they're making a mistake. Ignore the label.
@@ -66,7 +66,9 @@ const badIdentifiersArray = [
     'facebook.com/like.php',
     'facebook.com/local_surface',
     'facebook.com/logout.php',
+    'facebook.com/marketplace',
     'facebook.com/mbasic',
+    'facebook.com/me',
     'facebook.com/media',
     'facebook.com/menu',
     'facebook.com/messages',
@@ -81,6 +83,7 @@ const badIdentifiersArray = [
     'facebook.com/permalink.php',
     'facebook.com/pg',
     'facebook.com/photo.php',
+    'facebook.com/photo',
     'facebook.com/places',
     'facebook.com/policies',
     'facebook.com/privacy',
@@ -510,8 +513,6 @@ browser.contextMenus.onClicked.addListener(function (info, tab) {
             if (response.secondaryIdentifier && badIdentifiers[response.secondaryIdentifier])
                 response.secondaryIdentifier = null;
         }
-        if (response.debug && /^facebook\.com\/[a-zA-Z]/.test(response.identifier))
-            alert('Note: could not find numeric id for ' + response.identifier);
         response.tabId = tabId;
         response.frameId = frameId;
         saveLabel(response);
