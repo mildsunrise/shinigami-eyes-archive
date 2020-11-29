@@ -1,7 +1,7 @@
 var browser = browser || chrome;
 const PENDING_SUBMISSIONS = ':PENDING_SUBMISSIONS';
 const MIGRATION = ':MIGRATION';
-const CURRENT_VERSION = 100025;
+const CURRENT_VERSION = 100026;
 const badIdentifiersReasons = {};
 const badIdentifiers = {};
 // If a user labels one of these URLs, they're making a mistake. Ignore the label.
