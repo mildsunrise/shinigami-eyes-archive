@@ -181,7 +181,7 @@ function updateYouTubeChannelHeader() {
             replacement.style.fontWeight = '400';
             replacement.style.lineHeight = '3rem';
             replacement.style.textDecoration = 'none';
-            replacement.style.color = 'black';
+            replacement.style.color = 'var(--yt-spec-text-primary)';
         }
         replacement.textContent = lastAppliedYouTubeTitle;
         replacement.href = lastAppliedYouTubeUrl;
@@ -356,7 +356,7 @@ function getIdentifierFromElementImpl(element, originalTarget) {
         if (parent && parent.tagName == 'LI')
             return null;
         // React post timestamp
-        if (element.getAttribute('role') == 'link' && parent && parent.tagName == 'SPAN' && firstChild && firstChild.tagName == 'SPAN')
+        if (element.getAttribute('role') == 'link' && parent && parent.tagName == 'SPAN' && firstChild && firstChild.tagName == 'SPAN' && firstChild.tabIndex == 0)
             return null;
         // React big profile picture (user or page)
         if (originalTarget instanceof SVGImageElement && isFacebookPictureLink(element) && !getMatchingAncestorByCss(element, '[role=article]')) {
@@ -418,8 +418,10 @@ function getIdentifierFromElementImpl(element, originalTarget) {
             if (title && (title.startsWith('http://') || title.startsWith('https://')))
                 return getIdentifier(title);
             const content = element.textContent;
-            if (!content.includes(' ') && content.includes('.') && !content.includes('…'))
-                return getIdentifier('http://' + content);
+            if (!content.includes(' ') && content.includes('.') && !content.includes('…')) {
+                const url = content.startsWith('http://') || content.startsWith('https://') ? content : 'http://' + content;
+                return getIdentifier(url);
+            }
         }
     }
     else if (domainIs(hostname, 'wikipedia.org')) {
@@ -427,7 +429,7 @@ function getIdentifierFromElementImpl(element, originalTarget) {
             return null;
     }
     if (element.classList.contains('tumblelog'))
-        return element.textContent.substr(1) + '.tumblr.com';
+        return element.textContent.replace('@', '') + '.tumblr.com';
     const href = element.href;
     if (href && (!href.endsWith('#') || href.includes('&stick=')))
         return getIdentifierFromURLImpl(tryParseURL(href));
@@ -455,6 +457,8 @@ function tryUnwrapNestedURL(url) {
         // const values = url.searchParams.values()
         // HACK: values(...) is not iterable on facebook (babel polyfill?)
         const values = url.search.split('&').map(x => {
+            if (x.startsWith('ref_url='))
+                return '';
             const eq = x.indexOf('=');
             return eq == -1 ? '' : decodeURIComponent(x.substr(eq + 1));
         });
@@ -492,6 +496,8 @@ function getIdentifierFromURLImpl(url) {
         host = host.substring(4);
     const pathArray = url.pathname.split('/');
     if (domainIs(host, 'facebook.com')) {
+        if (searchParams.get('story_fbid'))
+            return null;
         const fbId = searchParams.get('id');
         const p = url.pathname.replace('/pg/', '/');
         const isGroup = p.startsWith('/groups/');
@@ -520,6 +526,10 @@ function getIdentifierFromURLImpl(url) {
         return 'disqus.com' + getPartialPath(url.pathname, 2);
     }
     else if (domainIs(host, 'medium.com')) {
+        const hostParts = host.split('.');
+        if (hostParts.length == 3 && hostParts[0] != 'www') {
+            return host;
+        }
         return 'medium.com' + getPartialPath(url.pathname.replace('/t/', '/'), 1);
     }
     else if (domainIs(host, 'tumblr.com')) {
@@ -534,10 +544,23 @@ function getIdentifierFromURLImpl(url) {
         return null;
     }
     else if (domainIs(host, 'wikipedia.org') || domainIs(host, 'rationalwiki.org')) {
-        if (url.hash || url.pathname.includes(':'))
+        const pathname = url.pathname;
+        if (url.hash)
             return null;
-        if (url.pathname.startsWith('/wiki/'))
-            return 'wikipedia.org' + decodeURIComponent(getPartialPath(url.pathname, 2));
+        if (pathname == '/w/index.php' && searchParams.get('action') == 'edit') {
+            const title = searchParams.get('title');
+            if (title && title.startsWith('User:')) {
+                return 'wikipedia.org/wiki/' + title;
+            }
+        }
+        if (pathname.startsWith('/wiki/Special:Contributions/') && url.href == window.location.href)
+            return 'wikipedia.org/wiki/User:' + pathArray[3];
+        if (pathname.startsWith('/wiki/User:'))
+            return 'wikipedia.org/wiki/User:' + pathArray[2].split(':')[1];
+        if (pathname.includes(':'))
+            return null;
+        if (pathname.startsWith('/wiki/'))
+            return 'wikipedia.org' + decodeURIComponent(getPartialPath(pathname, 2));
         else
             return null;
     }
@@ -577,8 +600,16 @@ function getMatchingAncestorByCss(node, cssMatch) {
 }
 function getSnippet(node) {
     if (hostname == 'facebook.com') {
+        const pathname = window.location.pathname;
+        const isPhotoPage = pathname.startsWith('/photo') || pathname.includes('/photos/') || pathname.startsWith('/video') || pathname.includes('/videos/');
+        if (isPhotoPage) {
+            const sidebar = document.querySelector('[role=complementary]');
+            if (sidebar)
+                return sidebar.parentElement;
+        }
+        const isSearchPage = pathname.startsWith('/search/');
         return getMatchingAncestor(node, x => {
-            if (x.getAttribute('role') == 'article' && x.getAttribute('aria-labelledby'))
+            if (x.getAttribute('role') == 'article' && (isSearchPage || x.getAttribute('aria-labelledby')))
                 return true;
             var dataset = x.dataset;
             if (!dataset)
@@ -603,7 +634,7 @@ function getSnippet(node) {
     if (hostname == 'youtube.com')
         return getMatchingAncestorByCss(node, 'ytd-comment-renderer, ytd-video-secondary-info-renderer');
     if (hostname == 'tumblr.com')
-        return getMatchingAncestor(node, x => (x.dataset && !!x.dataset.postId) || x.classList.contains('post'));
+        return getMatchingAncestor(node, x => (x.dataset && !!(x.dataset.postId || x.dataset.id)) || x.classList.contains('post'));
     return null;
 }
 function getBadIdentifierReason(identifier, url, target) {
@@ -629,6 +660,8 @@ function getBadIdentifierReason(identifier, url, target) {
     if (url.includes('facebook.com') && (url.includes('/posts/') ||
         url.includes('/photo/') ||
         url.includes('/photo.php') ||
+        url.includes('/permalink.php') ||
+        url.includes('/permalink/') ||
         url.includes('/photos/')))
         return 'Only pages, users and groups can be labeled, not specific posts or photos.';
     if (url.includes('wiki') && url.includes('#'))
