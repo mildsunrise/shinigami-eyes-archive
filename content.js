@@ -517,10 +517,10 @@ function getIdentifierFromURLImpl(url) {
         return 'twitter.com' + getPartialPath(url.pathname, 1);
     }
     else if (domainIs(host, 'youtube.com')) {
-        const pathname = url.pathname.replace('/c/', '/user/');
-        if (!pathname.startsWith('/user/') && !pathname.startsWith('/channel/'))
-            return null;
-        return 'youtube.com' + getPartialPath(pathname, 2);
+        const pathname = url.pathname;
+        if (pathname.startsWith('/user/') || pathname.startsWith('/c/') || pathname.startsWith('/channel/'))
+            return 'youtube.com' + getPartialPath(pathname, 2);
+        return 'youtube.com' + getPartialPath(pathname, 1);
     }
     else if (domainIs(host, 'disqus.com') && url.pathname.startsWith('/by/')) {
         return 'disqus.com' + getPartialPath(url.pathname, 2);
