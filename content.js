@@ -112,7 +112,6 @@ function init() {
     if (hostname == 'twitter.com') {
         setInterval(updateTwitterClasses, 800);
     }
-    console.log('Self: ' + myself);
     document.addEventListener('contextmenu', evt => {
         lastRightClickedElement = evt.target;
     }, true);
@@ -451,6 +450,11 @@ function tryParseURL(urlstr) {
 function tryUnwrapNestedURL(url) {
     if (!url)
         return null;
+    if (domainIs(url.host, 'youtube.com') && url.pathname == '/redirect') {
+        const q = url.searchParams.get('q');
+        if (q && !q.startsWith('http:') && !q.startsWith('https:') && q.includes('.'))
+            return tryParseURL('http://' + q);
+    }
     if (url.href.indexOf('http', 1) != -1) {
         if (url.pathname.startsWith('/intl/'))
             return null; // facebook language switch links

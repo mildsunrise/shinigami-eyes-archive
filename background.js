@@ -1,7 +1,7 @@
 var browser = browser || chrome;
 const PENDING_SUBMISSIONS = ':PENDING_SUBMISSIONS';
 const MIGRATION = ':MIGRATION';
-const CURRENT_VERSION = 100028;
+const CURRENT_VERSION = 100029;
 const badIdentifiersReasons = {};
 const badIdentifiers = {};
 // If a user labels one of these URLs, they're making a mistake. Ignore the label.
@@ -307,12 +307,25 @@ const badIdentifiersArray = [
     badIdentifiers[id] = true;
     return id;
 });
+const ASYMMETRIC_COMMENT = "Submission data is asymmetrically encrypted (in addition to HTTPS), so that not even the cloud provider can access it (since it doesn't have the corresponding private key). Actual processing and decryption is done off-cloud in a second phase. If you want to inspect the submission data *before* it gets encrypted, open the extension debugging dev tools (chrome://extensions or about:debugging) and look at the console output, or call setAsymmetricEncryptionEnabled(false) to permanently turn asymmetric encryption off.";
+// This key is public. Decrypting requires a different key.
+const SHINIGAMI_PUBLIC_ENCRYPTION_KEY = {
+    "alg": "RSA-OAEP-256",
+    "e": "AQAB",
+    "ext": true,
+    "key_ops": [
+        "encrypt"
+    ],
+    "kty": "RSA",
+    "n": "sJ8r8D_Ae_y4db_sSZvLIqTCjAdyDEIMXHcCNM_sOO_t2RmcUETecKyDdNVtaY9Ve0OM1cyHz-YEYXMpNQx_NcXd6KDdGxZ1MUTlja5tUIDMNw-N0hzZbmvk-4MymMpN25lwdvCGo3Ri6EJ7XRMZbtmwTfQoZR5olfGi_Y0SbTw0RJ-U9Wf2CqlQ7w8x-M77cPaANKav_yOitwlJjhkZTo6ssvdnsc20OIP46XSYRwyzlMAlx7wQ2Dw7aX4bkPMbgs2L13uAFPCvQOBnE4esD2MyICKiIe0j-wgVK4qh0gmh513HNYewsgsoiMJlzz5v2epFwh25icIEHfYRcKteryEuzKUZ7g-FqdLb6sI_hrnvvu6D8MIDH1Baq179lpyFjJ4_famcuRuHsRPSwyQSX8v8DL23lARX8U9ZhcH0f3bBepuzEHXutnqxGxnErnxZGGr64saIBgGdtuOYbYuFqzMjCUvlFyCVh8DItRsJOdzj6xAxafnU5yvSJqcgAX0PQclbwIyg6wtxVa1et6Q7QiM16s5RyW2KHxp27PaBAuVlgVBG8S4DguJK3Y9E2vkgDTpFoSS-J80tZhZhPZ4PZL4ouvYrNnR3JgveuLYZsmYdpjtShkO_6erSanM0ZRb0E00TUYRykkviDtBLDP1aYNXv4_5jhAlLc_tOmWK_RLc"
+};
 var lastSubmissionError = null;
 var overrides = null;
 var accepted = false;
 var installationId = null;
 var theme = '';
-browser.storage.local.get(['overrides', 'accepted', 'installationId', 'theme'], v => {
+var disableAsymmetricEncryption = false;
+browser.storage.local.get(['overrides', 'accepted', 'installationId', 'theme', 'disableAsymmetricEncryption'], v => {
     if (!v.installationId) {
         installationId = (Math.random() + '.' + Math.random() + '.' + Math.random()).replace(/\./g, '');
         browser.storage.local.set({ installationId: installationId });
@@ -323,6 +336,7 @@ browser.storage.local.get(['overrides', 'accepted', 'installationId', 'theme'], 
     accepted = v.accepted;
     overrides = v.overrides || {};
     theme = v.theme;
+    disableAsymmetricEncryption = v.disableAsymmetricEncryption || false;
     const migration = overrides[MIGRATION] || 0;
     if (migration < CURRENT_VERSION) {
         for (const key of Object.getOwnPropertyNames(overrides)) {
@@ -352,6 +366,10 @@ async function loadBloomFilter(name) {
     const b = new BloomFilter(array, 20);
     b.name = name;
     bloomFilters.push(b);
+}
+function setAsymmetricEncryptionEnabled(enabled) {
+    disableAsymmetricEncryption = !enabled;
+    browser.storage.local.set({ disableAsymmetricEncryption: disableAsymmetricEncryption });
 }
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.setTheme) {
@@ -464,18 +482,93 @@ createSystemContextMenu('---', 'separator', true);
 createSystemContextMenu('Settings', 'options');
 createSystemContextMenu('Help', 'help');
 var uncommittedResponse = null;
+/*
+ * base64-arraybuffer
+ * https://github.com/niklasvh/base64-arraybuffer
+ *
+ * Copyright (c) 2012 Niklas von Hertzen
+ * Licensed under the MIT license.
+ */
+const BASE_64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+function bufferToBase64(arraybuffer) {
+    var bytes = new Uint8Array(arraybuffer), i, len = bytes.length, base64 = "";
+    for (i = 0; i < len; i += 3) {
+        base64 += BASE_64_CHARS[bytes[i] >> 2];
+        base64 += BASE_64_CHARS[((bytes[i] & 3) << 4) | (bytes[i + 1] >> 4)];
+        base64 += BASE_64_CHARS[((bytes[i + 1] & 15) << 2) | (bytes[i + 2] >> 6)];
+        base64 += BASE_64_CHARS[bytes[i + 2] & 63];
+    }
+    if ((len % 3) === 2) {
+        base64 = base64.substring(0, base64.length - 1) + "=";
+    }
+    else if (len % 3 === 1) {
+        base64 = base64.substring(0, base64.length - 2) + "==";
+    }
+    return base64;
+}
+function objectToBytes(obj) {
+    const json = JSON.stringify(obj);
+    const textEncoder = new TextEncoder();
+    return textEncoder.encode(json);
+}
+async function encryptSubmission(plainObj) {
+    const publicEncryptionKey = await crypto.subtle.importKey('jwk', SHINIGAMI_PUBLIC_ENCRYPTION_KEY, {
+        name: 'RSA-OAEP',
+        hash: 'SHA-256'
+    }, false, ['encrypt']);
+    // Since asymmetric encryption only supports limited data size, we encrypt data symmetrically
+    // and then protect the symmetric key asymmetrically.
+    const symmetricKey = await crypto.subtle.generateKey({
+        name: 'AES-CBC',
+        length: 256
+    }, true, ['encrypt', 'decrypt']);
+    const iv = window.crypto.getRandomValues(new Uint8Array(16));
+    const plainData = objectToBytes(plainObj);
+    const symmetricallyEncryptedData = await crypto.subtle.encrypt({
+        name: "AES-CBC",
+        iv
+    }, symmetricKey, plainData);
+    const plainHash = await crypto.subtle.digest('SHA-256', plainData);
+    const asymmetricallyEncryptedSymmetricKey = await crypto.subtle.encrypt({
+        name: 'RSA-OAEP'
+    }, publicEncryptionKey, objectToBytes({
+        symmetricKey: await crypto.subtle.exportKey('jwk', symmetricKey),
+        sha256: bufferToBase64(plainHash)
+    }));
+    return {
+        _comment: ASYMMETRIC_COMMENT,
+        asymmetricallyEncryptedSymmetricKey: bufferToBase64(asymmetricallyEncryptedSymmetricKey),
+        symmetricInitializationVector: bufferToBase64(iv),
+        symmetricallyEncryptedData: bufferToBase64(symmetricallyEncryptedData),
+        version: CURRENT_VERSION
+    };
+}
 async function submitPendingRatings() {
     const submitted = getPendingSubmissions().map(x => x);
-    const requestBody = {
+    let plainRequest = {
         installationId: installationId,
         lastError: lastSubmissionError,
         entries: submitted
     };
+    console.log('Submitting request:');
+    console.log(plainRequest);
+    let actualRequest = plainRequest;
+    if (!disableAsymmetricEncryption) {
+        try {
+            actualRequest = await encryptSubmission(plainRequest);
+        }
+        catch (e) {
+            // If something goes wrong, fall back to the old behavior (of course, we still have HTTPS).
+            // While the above encryption process has been tested on both Chromium- and Gecko-based browsers,
+            // the real world behavior might be different.
+            // If no significant issues appear, this catch clause will be removed in a subsequent version of Shinigami Eyes.
+            actualRequest.encryptionError = e + '';
+        }
+    }
     lastSubmissionError = null;
-    console.log('Sending request');
     try {
-        const response = await fetch('https://k5kk18774h.execute-api.us-east-1.amazonaws.com/default/shinigamiEyesSubmission', {
-            body: JSON.stringify(requestBody),
+        const response = await fetch('https://shini-api.xyz/submit-vote', {
+            body: JSON.stringify(actualRequest),
             method: 'POST',
             credentials: 'omit',
         });
