@@ -1,7 +1,7 @@
 var browser = browser || chrome;
 const PENDING_SUBMISSIONS = ':PENDING_SUBMISSIONS';
 const MIGRATION = ':MIGRATION';
-const CURRENT_VERSION = 100029;
+const CURRENT_VERSION = 100030;
 const badIdentifiersReasons = {};
 const badIdentifiers = {};
 // If a user labels one of these URLs, they're making a mistake. Ignore the label.
@@ -543,8 +543,12 @@ async function encryptSubmission(plainObj) {
         version: CURRENT_VERSION
     };
 }
+const submissionsBeingSubmitted = new Set();
 async function submitPendingRatings() {
-    const submitted = getPendingSubmissions().map(x => x);
+    const submitted = getPendingSubmissions().filter(x => !submissionsBeingSubmitted.has(x));
+    for (const entry of submitted) {
+        submissionsBeingSubmitted.add(entry);
+    }
     let plainRequest = {
         installationId: installationId,
         lastError: lastSubmissionError,
@@ -567,10 +571,13 @@ async function submitPendingRatings() {
     }
     lastSubmissionError = null;
     try {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 90000);
         const response = await fetch('https://shini-api.xyz/submit-vote', {
             body: JSON.stringify(actualRequest),
             method: 'POST',
             credentials: 'omit',
+            signal: controller.signal
         });
         if (response.status != 200)
             throw ('HTTP status: ' + response.status);
@@ -582,6 +589,11 @@ async function submitPendingRatings() {
     }
     catch (e) {
         lastSubmissionError = '' + e;
+    }
+    finally {
+        for (const entry of submitted) {
+            submissionsBeingSubmitted.delete(entry);
+        }
     }
 }
 function getPendingSubmissions() {
@@ -599,6 +611,21 @@ function saveLabel(response) {
         browser.storage.local.set({ overrides: overrides });
         response.version = CURRENT_VERSION;
         response.submissionId = (Math.random() + '').replace('.', '');
+        let totalSize = 0;
+        for (const entry of getPendingSubmissions()) {
+            if (entry.snippet)
+                totalSize += entry.snippet.length;
+        }
+        if (totalSize > 2000000) {
+            for (const entry of getPendingSubmissions()) {
+                entry.snippet = null;
+                entry.trimmed = true;
+            }
+        }
+        if (response.snippet && response.snippet.length > 10000000) {
+            response.snippet = null;
+            response.trimmed = true;
+        }
         getPendingSubmissions().push(response);
         submitPendingRatings();
         //console.log(response);
