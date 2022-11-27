@@ -12,12 +12,13 @@ if (hostname.endsWith('.facebook.com'))
 if (hostname.endsWith('.youtube.com'))
     hostname = 'youtube.com';
 var myself = null;
-var isSocialNetwork = null;
+var isMastodon = null;
+const colorLinks = !!window.shinigamiEyesColorLinks;
 function fixupSiteStyles() {
     if (hostname == 'facebook.com') {
-        let m = document.querySelector("[id^='profile_pic_header_']");
-        if (m)
-            myself = 'facebook.com/' + captureRegex(m.id, /header_(\d+)/);
+        const s = [...document.querySelectorAll('script')].map(x => x.innerText.match(/profileSwitcherEligibleProfiles.*username":"(.*?)"/)).map(x => x ? x[1] : null).filter(x => x)[0];
+        if (s)
+            myself = 'facebook.com/' + s;
     }
     else if (hostname == 'medium.com') {
         addStyleSheet(`
@@ -43,7 +44,8 @@ function fixupSiteStyles() {
         `);
     }
     else if (hostname == 'twitter.com') {
-        myself = getIdentifier(document.querySelector('.DashUserDropdown-userInfo a'));
+        const s = [...document.querySelectorAll('script')].map(x => x.innerText.match(/screen_name":"(.*?)"/)).map(x => x ? x[1] : null).filter(x => x)[0];
+        myself = s ? 'twitter.com/' + s.toLowerCase() : null;
         addStyleSheet(`
             .pretty-link b, .pretty-link s {
                 color: inherit !important;
@@ -90,20 +92,7 @@ function maybeDisableCustomCss() {
         [...document.styleSheets].filter(shouldDisable).forEach(x => x.disabled = true);
 }
 function init() {
-    isSocialNetwork = [
-        'facebook.com',
-        'youtube.com',
-        'reddit.com',
-        'twitter.com',
-        'medium.com',
-        'disqus.com',
-        'rationalwiki.org',
-        'duckduckgo.com',
-        'bing.com',
-    ].includes(hostname) ||
-        domainIs(hostname, 'tumblr.com') ||
-        domainIs(hostname, 'wikipedia.org') ||
-        /^google(\.co)?\.\w+$/.test(hostname);
+    isMastodon = !!(document.getElementById('mastodon') || document.querySelector("a[href*='joinmastodon.org/apps']"));
     fixupSiteStyles();
     if (domainIs(hostname, 'youtube.com')) {
         setInterval(updateYouTubeChannelHeader, 300);
@@ -117,7 +106,7 @@ function init() {
     }, true);
     maybeDisableCustomCss();
     updateAllLabels();
-    if (isSocialNetwork) {
+    if (colorLinks) {
         var observer = new MutationObserver(mutationsList => {
             maybeDisableCustomCss();
             for (const mutation of mutationsList) {
@@ -190,12 +179,12 @@ function updateYouTubeChannelHeader() {
     setTimeout(updateAllLabels, 4000);
 }
 function updateAllLabels(refresh) {
+    if (!colorLinks)
+        return;
     if (refresh)
         knownLabels = {};
-    if (isSocialNetwork) {
-        for (const a of document.getElementsByTagName('a')) {
-            initLink(a);
-        }
+    for (const a of document.getElementsByTagName('a')) {
+        initLink(a);
     }
     solvePendingLabels();
 }
@@ -308,6 +297,8 @@ function getIdentifier(link, originalTarget) {
     try {
         var k = link instanceof Node ? getIdentifierFromElementImpl(link, originalTarget) : getIdentifierFromURLImpl(tryParseURL(link));
         if (!k || k.indexOf('!') != -1)
+            return null;
+        if (isMastodon && k == location.host)
             return null;
         return k.toLowerCase();
     }
@@ -477,6 +468,7 @@ function tryUnwrapNestedURL(url) {
     }
     return null;
 }
+const MASTODON_FALSE_POSITIVES = ['tiktok.com', 'youtube.com', 'medium.com', 'foundation.app', 'pronouns.page'];
 function getIdentifierFromURLImpl(url) {
     if (!url)
         return null;
@@ -541,7 +533,19 @@ function getIdentifierFromURLImpl(url) {
             const name = getPathPart(url.pathname, 2);
             return name ? name + '.tumblr.com' : null;
         }
-        if (host != 'www.tumblr.com' && host != 'assets.tumblr.com' && host.indexOf('.media.') == -1) {
+        if (host == 'tumblr.com' || host == 'at.tumblr.com') {
+            let name = getPathPart(url.pathname, 0);
+            if (!name)
+                return null;
+            if (name == 'blog')
+                name = getPathPart(url.pathname, 1);
+            if (['new', 'dashboard', 'explore', 'inbox', 'likes', 'following', 'settings', 'changes', 'help', 'about', 'apps', 'policy', 'post', 'search', 'tagged'].includes(name))
+                return null;
+            if (name.startsWith('@'))
+                name = name.substring(1);
+            return name + '.tumblr.com';
+        }
+        if (host != 'tumblr.com' && host != 'assets.tumblr.com' && host.indexOf('.media.') == -1) {
             if (!url.pathname.startsWith('/tagged/'))
                 return url.host;
         }
@@ -583,9 +587,29 @@ function getIdentifierFromURLImpl(url) {
         }
         return null;
     }
+    else if (domainIs(host, 'cohost.org')) {
+        return 'cohost.org' + getPartialPath(url.pathname, 1);
+    }
     else {
         if (host.startsWith('m.'))
             host = host.substr(2);
+        if (url.pathname.startsWith('/@') || url.pathname.startsWith('/web/@')) {
+            let username = getPathPart(url.pathname, 0);
+            if (username == 'web') {
+                username = getPathPart(url.pathname, 1);
+            }
+            username = username.substring(1);
+            var parts = username.split('@');
+            if (parts.length == 2)
+                return parts[1] + '/@' + parts[0];
+            if (parts.length == 1 && username && !MASTODON_FALSE_POSITIVES.includes(host))
+                return host + '/@' + username;
+        }
+        if (url.pathname.startsWith('/users/')) {
+            let username = getPathPart(url.pathname, 1);
+            if (username && !MASTODON_FALSE_POSITIVES.includes(host))
+                return host + '/@' + username;
+        }
         return host;
     }
 }
@@ -639,6 +663,8 @@ function getSnippet(node) {
         return getMatchingAncestorByCss(node, 'ytd-comment-renderer, ytd-video-secondary-info-renderer');
     if (hostname == 'tumblr.com')
         return getMatchingAncestor(node, x => (x.dataset && !!(x.dataset.postId || x.dataset.id)) || x.classList.contains('post'));
+    if (isMastodon)
+        return getMatchingAncestorByCss(node, '.status, article, .detailed-status__wrapper, .status__wrapper-reply');
     return null;
 }
 function getBadIdentifierReason(identifier, url, target) {
@@ -670,6 +696,8 @@ function getBadIdentifierReason(identifier, url, target) {
         return 'Only pages, users and groups can be labeled, not specific posts or photos.';
     if (url.includes('wiki') && url.includes('#'))
         return 'Wiki paragraphs cannot be labeled, only whole articles.';
+    if (url.includes('tumblr.com/tagged/') || url.includes('tumblr.com/search/'))
+        return 'Only blogs can be labeled, not tags.';
     return null;
 }
 var previousConfirmationMessage = null;
@@ -680,7 +708,7 @@ function displayConfirmation(identifier, label, badIdentifierReason, url, target
     }
     if (!label)
         return;
-    if (isSocialNetwork && label != 'bad-identifier')
+    if (colorLinks && label != 'bad-identifier')
         return;
     const confirmation = document.createElement('div');
     const background = label == 't-friendly' ? '#eaffcf' :
@@ -705,8 +733,9 @@ function displayConfirmation(identifier, label, badIdentifierReason, url, target
 `;
     }
     else {
-        text = identifier + (label == 't-friendly' ? ' will be displayed as trans-friendly on search engines and social networks.' :
-            label == 'transphobic' ? ' will be displayed as anti-trans on search engines and social networks.' :
+        const suffix = (isMastodon && !colorLinks) ? 'on supported Mastodon instances.' : 'on search engines and social networks.';
+        text = identifier + (label == 't-friendly' ? ' will be displayed as trans-friendly ' + suffix :
+            label == 'transphobic' ? ' will be displayed as anti-trans ' + suffix :
                 ' has been cleared.');
     }
     confirmation.textContent = text;
@@ -755,6 +784,5 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.debug <= 1)
             setTimeout(() => snippet.classList.remove(debugClass), 1500);
     }
-    message.isSocialNetwork = isSocialNetwork;
     sendResponse(message);
 });

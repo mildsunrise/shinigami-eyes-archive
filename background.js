@@ -1,7 +1,7 @@
 var browser = browser || chrome;
 const PENDING_SUBMISSIONS = ':PENDING_SUBMISSIONS';
 const MIGRATION = ':MIGRATION';
-const CURRENT_VERSION = 100030;
+const CURRENT_VERSION = 100031;
 const badIdentifiersReasons = {};
 const badIdentifiers = {};
 // If a user labels one of these URLs, they're making a mistake. Ignore the label.
@@ -13,9 +13,11 @@ const badIdentifiers = {};
 const badIdentifiersArray = [
     'a.co',
     'about.me=SN',
+    'allmylinks.com=SN',
     'amzn.to',
     'archive.is=AR',
     'archive.org=AR',
+    'archiveofourown.org=SN',
     'ask.fm=SN',
     'assets.tumblr.com',
     'bing.com',
@@ -26,8 +28,13 @@ const badIdentifiersArray = [
     'cash.me=SN',
     'change.org',
     'chrome.google.com',
+    'cohost.org',
+    'cohost.org/rc',
+    'counter.social=SN',
+    'curiouscat.live=SN',
     'curiouscat.me=SN',
     'curiouscat.qa=SN',
+    'curiositystream.com=SN',
     'deviantart.com=SN',
     'discord.gg=SN',
     'discordapp.com=SN',
@@ -120,10 +127,12 @@ const badIdentifiersArray = [
     'facebook.com/watch',
     'fb.me',
     'flickr.com=SN',
+    'furaffinity.net=SN',
     'gofundme.com=SN',
     'goo.gl',
     'google.com',
     'googleusercontent.com',
+    'hivesocial.app=SN',
     'http',
     'https',
     'i.imgur.com',
@@ -139,14 +148,20 @@ const badIdentifiersArray = [
     'linktr.ee=SN',
     'mail.google.com',
     'media.tumblr.com',
+    'at.tumblr.com',
     'medium.com',
+    'nebula.app=SN',
+    'nebula.tv=SN',
     'news.google.com',
     'onlyfans.com=SN',
     'open.spotify.com=SN',
     'patreon.com=SN',
     'paypal.com=SN',
     'paypal.me=SN',
+    'post.news=SN',
+    'pillowfort.social=SN',
     'pinterest.com=SN',
+    'pixiv.net',
     'play.google.com',
     'plus.google.com=SN',
     'podcasts.apple.com=SN',
@@ -197,6 +212,7 @@ const badIdentifiersArray = [
     'reddit.com/user/jiffierbot',
     'reddit.com/user/livetwitchclips',
     'reddit.com/user/lyrics-matcher-bot',
+    'reddit.com/user/magic_eye_bot',
     'reddit.com/user/mailmygovnnbot',
     'reddit.com/user/massdropbot',
     'reddit.com/user/mentioned_videos',
@@ -264,6 +280,7 @@ const badIdentifiersArray = [
     't.umblr.com',
     'tapastic.com=SN',
     'tapatalk.com=SN',
+    'tinyurl.com',
     'tiktok.com=SN',
     'tmblr.co',
     'tumblr.com',
@@ -299,6 +316,47 @@ const badIdentifiersArray = [
     'youtube.com/premium',
     'youtube.com/redirect',
     'youtube.com/watch',
+    'anarchism.space',
+    'aus.social',
+    'c.im',
+    'chaos.social',
+    'eightpoint.app',
+    'eldritch.cafe',
+    'fosstodon.org',
+    'hachyderm.io',
+    'infosec.exchange',
+    'kolektiva.social',
+    'mas.to',
+    'masto.ai',
+    'mastodon.art',
+    'mastodon.cloud',
+    'mastodon.green',
+    'mastodon.ie',
+    'mastodon.lol',
+    'mastodon.nz',
+    'mastodon.online',
+    'mastodon.scot',
+    'mastodon.social',
+    'mastodon.world',
+    'mastodon.xyz',
+    'mastodonapp.uk',
+    'meow.social',
+    'mstdn.ca',
+    'mstdn.jp',
+    'mstdn.social',
+    'octodon.social',
+    'ohai.social',
+    'pixelfed.social',
+    'queer.party',
+    'sfba.social',
+    'social.transsafety.network',
+    'tech.lgbt',
+    'techhub.social',
+    'toot.cat',
+    'toot.community',
+    'toot.wales',
+    'vulpine.club',
+    'wandering.shop',
 ].map(x => {
     const arr = x.split('=');
     const id = arr[0];
@@ -325,53 +383,59 @@ var accepted = false;
 var installationId = null;
 var theme = '';
 var disableAsymmetricEncryption = false;
-browser.storage.local.get(['overrides', 'accepted', 'installationId', 'theme', 'disableAsymmetricEncryption'], v => {
-    if (!v.installationId) {
-        installationId = (Math.random() + '.' + Math.random() + '.' + Math.random()).replace(/\./g, '');
-        browser.storage.local.set({ installationId: installationId });
-    }
-    else {
-        installationId = v.installationId;
-    }
-    accepted = v.accepted;
-    overrides = v.overrides || {};
-    theme = v.theme;
-    disableAsymmetricEncryption = v.disableAsymmetricEncryption || false;
-    const migration = overrides[MIGRATION] || 0;
-    if (migration < CURRENT_VERSION) {
-        for (const key of Object.getOwnPropertyNames(overrides)) {
-            if (key.startsWith(':'))
-                continue;
-            if (key.startsWith('facebook.com/a.')) {
-                delete overrides[key];
-                continue;
-            }
-            if (key != key.toLowerCase()) {
-                let v = overrides[key];
-                delete overrides[key];
-                overrides[key.toLowerCase()] = v;
-            }
+var initializationPromise = new Promise((resolve) => {
+    browser.storage.local.get(['overrides', 'accepted', 'installationId', 'theme', 'disableAsymmetricEncryption'], v => {
+        if (!v.installationId) {
+            installationId = crypto.randomUUID();
+            browser.storage.local.set({ installationId: installationId });
         }
-        badIdentifiersArray.forEach(x => delete overrides[x]);
-        overrides[MIGRATION] = CURRENT_VERSION;
-        browser.storage.local.set({ overrides: overrides });
-    }
+        else {
+            installationId = v.installationId;
+        }
+        accepted = v.accepted;
+        overrides = v.overrides || {};
+        theme = v.theme;
+        disableAsymmetricEncryption = v.disableAsymmetricEncryption || false;
+        const migration = overrides[MIGRATION] || 0;
+        if (migration < CURRENT_VERSION) {
+            for (const key of Object.getOwnPropertyNames(overrides)) {
+                if (key.startsWith(':'))
+                    continue;
+                if (key.startsWith('facebook.com/a.')) {
+                    delete overrides[key];
+                    continue;
+                }
+                if (key != key.toLowerCase()) {
+                    let v = overrides[key];
+                    delete overrides[key];
+                    overrides[key.toLowerCase()] = v;
+                }
+            }
+            badIdentifiersArray.forEach(x => delete overrides[x]);
+            overrides[MIGRATION] = CURRENT_VERSION;
+            browser.storage.local.set({ overrides: overrides });
+        }
+        resolve();
+    });
 });
 const bloomFilters = [];
 async function loadBloomFilter(name) {
     const url = browser.extension.getURL('data/' + name + '.dat');
     const response = await fetch(url);
     const arrayBuffer = await response.arrayBuffer();
-    const array = new Uint32Array(arrayBuffer);
-    const b = new BloomFilter(array, 20);
-    b.name = name;
-    bloomFilters.push(b);
+    const combined = new CombinedBloomFilter();
+    combined.name = name;
+    combined.parts = [
+        new BloomFilter(new Int32Array(arrayBuffer.slice(0, 287552)), 20),
+        new BloomFilter(new Int32Array(arrayBuffer.slice(287552)), 21),
+    ];
+    bloomFilters.push(combined);
 }
 function setAsymmetricEncryptionEnabled(enabled) {
     disableAsymmetricEncryption = !enabled;
     browser.storage.local.set({ disableAsymmetricEncryption: disableAsymmetricEncryption });
 }
-browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+async function handleMessage(message, sender) {
     if (message.setTheme) {
         theme = message.setTheme;
         browser.storage.local.set({ theme: message.setTheme });
@@ -393,10 +457,12 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     if (message.closeCallingTab) {
         browser.tabs.remove(sender.tab.id);
-        return;
+        return {};
     }
     const response = {};
-    const transphobic = message.myself && bloomFilters.filter(x => x.name == 'transphobic')[0].test(message.myself);
+    await initializationPromise;
+    await bloomFiltersLoadedPromise;
+    const transphobic = message.myself && bloomFilters.filter(x => x.name == 'transphobic')[0].test(message.myself) && installationId.includes('-');
     for (const id of message.ids) {
         if (overrides[id] !== undefined) {
             response[id] = overrides[id];
@@ -415,13 +481,23 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         for (const bloomFilter of bloomFilters) {
             if (bloomFilter.test(id))
                 response[id] = bloomFilter.name;
+            if (id.startsWith('youtube.com/@')) {
+                if (bloomFilter.test(id.replace('/@', '/c/')))
+                    response[id] = bloomFilter.name;
+            }
         }
     }
     response[':theme'] = theme;
-    sendResponse(response);
+    return response;
+}
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    handleMessage(message, sender).then(response => sendResponse(response));
+    return true;
 });
-loadBloomFilter('transphobic');
-loadBloomFilter('t-friendly');
+var bloomFiltersLoadedPromise = (async () => {
+    await loadBloomFilter('transphobic');
+    await loadBloomFilter('t-friendly');
+})();
 const socialNetworkPatterns = [
     "*://*.facebook.com/*",
     "*://*.youtube.com/*",
@@ -436,6 +512,9 @@ const socialNetworkPatterns = [
     "*://*.google.com/*",
     "*://*.bing.com/*",
     "*://duckduckgo.com/*",
+    "*://cohost.org/*",
+    "*://*/@*",
+    "*://*/users/*",
 ];
 const homepagePatterns = [
     "*://*/",
