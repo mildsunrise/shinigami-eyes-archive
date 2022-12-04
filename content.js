@@ -627,6 +627,7 @@ function getMatchingAncestorByCss(node, cssMatch) {
     return getMatchingAncestor(node, x => x.matches(cssMatch));
 }
 function getSnippet(node) {
+    var _a;
     if (hostname == 'facebook.com') {
         const pathname = window.location.pathname;
         const isPhotoPage = pathname.startsWith('/photo') || pathname.includes('/photos/') || pathname.startsWith('/video') || pathname.includes('/videos/');
@@ -664,7 +665,7 @@ function getSnippet(node) {
     if (hostname == 'tumblr.com')
         return getMatchingAncestor(node, x => (x.dataset && !!(x.dataset.postId || x.dataset.id)) || x.classList.contains('post'));
     if (isMastodon)
-        return getMatchingAncestorByCss(node, '.status, article, .detailed-status__wrapper, .status__wrapper-reply');
+        return (_a = (/\/\d+$/.test(location.pathname) ? getMatchingAncestorByCss(node, '.scrollable') : null)) !== null && _a !== void 0 ? _a : getMatchingAncestorByCss(node, '.status, article, .detailed-status__wrapper, .status__wrapper-reply');
     return null;
 }
 function getBadIdentifierReason(identifier, url, target) {

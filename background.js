@@ -1,7 +1,8 @@
+import { BloomFilter, CombinedBloomFilter } from "./bloomfilter.js";
 var browser = browser || chrome;
 const PENDING_SUBMISSIONS = ':PENDING_SUBMISSIONS';
 const MIGRATION = ':MIGRATION';
-const CURRENT_VERSION = 100031;
+const CURRENT_VERSION = 100032;
 const badIdentifiersReasons = {};
 const badIdentifiers = {};
 // If a user labels one of these URLs, they're making a mistake. Ignore the label.
@@ -420,7 +421,7 @@ var initializationPromise = new Promise((resolve) => {
 });
 const bloomFilters = [];
 async function loadBloomFilter(name) {
-    const url = browser.extension.getURL('data/' + name + '.dat');
+    const url = getURL('data/' + name + '.dat');
     const response = await fetch(url);
     const arrayBuffer = await response.arrayBuffer();
     const combined = new CombinedBloomFilter();
@@ -550,6 +551,7 @@ function createSystemContextMenu(text, id, separator) {
 }
 browser.contextMenus.create({
     title: '(Please right click on a link instead)',
+    id: 'instructions-needs-link',
     enabled: false,
     contexts: ['page'],
     documentUrlPatterns: socialNetworkPatterns
@@ -601,7 +603,7 @@ async function encryptSubmission(plainObj) {
         name: 'AES-CBC',
         length: 256
     }, true, ['encrypt', 'decrypt']);
-    const iv = window.crypto.getRandomValues(new Uint8Array(16));
+    const iv = globalThis.crypto.getRandomValues(new Uint8Array(16));
     const plainData = objectToBytes(plainObj);
     const symmetricallyEncryptedData = await crypto.subtle.encrypt({
         name: "AES-CBC",
@@ -722,13 +724,16 @@ function saveLabel(response) {
 }
 function openHelp() {
     browser.tabs.create({
-        url: browser.extension.getURL('help.html')
+        url: getURL('help.html')
     });
 }
 function openOptions() {
     browser.tabs.create({
-        url: browser.extension.getURL('options.html')
+        url: getURL('options.html')
     });
+}
+function getURL(path) {
+    return chrome.runtime.getURL(path);
 }
 function sendMessageToContent(tabId, frameId, message) {
     const options = frameId === null ? undefined : { frameId: frameId };

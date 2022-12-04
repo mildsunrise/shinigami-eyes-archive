@@ -1,5 +1,5 @@
 {
-	"manifest_version": 2,
+	"manifest_version": 3,
 	"name": "Shinigami Eyes",
 	"author": "Shinigami Eyes",
 	"homepage_url": "https://shinigami-eyes.github.io/",
@@ -101,15 +101,9 @@
 			]
 		}
 	],
-	"web_accessible_resources": [
-		"data/transphobic.dat",
-		"data/t-friendly.dat"
-	],
 	"background": {
-		"scripts": [
-			"bloomfilter.js",
-			"background.js"
-		]
+		"service_worker": "background.js",
+		"type": "module"
 	},
 	"options_ui": {
 		"page": "options.html",
@@ -117,7 +111,9 @@
 	},
 	"permissions": [
 		"contextMenus",
-		"storage",
+		"storage"
+	],
+	"host_permissions": [
 		"*://*/*"
 	],
 	"applications": {
