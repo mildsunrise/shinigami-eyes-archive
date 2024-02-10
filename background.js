@@ -1,8 +1,7 @@
-import { BloomFilter, CombinedBloomFilter } from "./bloomfilter.js";
 var browser = browser || chrome;
 const PENDING_SUBMISSIONS = ':PENDING_SUBMISSIONS';
 const MIGRATION = ':MIGRATION';
-const CURRENT_VERSION = 100032;
+const CURRENT_VERSION = 100033;
 const badIdentifiersReasons = {};
 const badIdentifiers = {};
 // If a user labels one of these URLs, they're making a mistake. Ignore the label.
@@ -286,6 +285,7 @@ const badIdentifiersArray = [
     'tmblr.co',
     'tumblr.com',
     'twitch.tv=SN',
+    'x.com',
     'twitter.com',
     'twitter.com/explore',
     'twitter.com/hashtag',
@@ -358,6 +358,9 @@ const badIdentifiersArray = [
     'toot.wales',
     'vulpine.club',
     'wandering.shop',
+    'threads.net',
+    'bsky.social=SN',
+    'bsky.app=SN'
 ].map(x => {
     const arr = x.split('=');
     const id = arr[0];
@@ -397,7 +400,7 @@ var initializationPromise = new Promise((resolve) => {
         overrides = v.overrides || {};
         theme = v.theme;
         disableAsymmetricEncryption = v.disableAsymmetricEncryption || false;
-        const migration = overrides[MIGRATION] || 0;
+        const migration = +(overrides[MIGRATION] || 0);
         if (migration < CURRENT_VERSION) {
             for (const key of Object.getOwnPropertyNames(overrides)) {
                 if (key.startsWith(':'))
@@ -504,7 +507,10 @@ const socialNetworkPatterns = [
     "*://*.youtube.com/*",
     "*://*.reddit.com/*",
     "*://*.twitter.com/*",
+    "*://*.x.com/*",
     "*://*.t.co/*",
+    "*://*.bsky.app/*",
+    "*://*.bsky.social/*",
     "*://*.medium.com/*",
     "*://disqus.com/*",
     "*://*.tumblr.com/*",
@@ -733,7 +739,7 @@ function openOptions() {
     });
 }
 function getURL(path) {
-    return chrome.runtime.getURL(path);
+    return browser.extension.getURL(path);
 }
 function sendMessageToContent(tabId, frameId, message) {
     const options = frameId === null ? undefined : { frameId: frameId };
