@@ -1,7 +1,8 @@
+import { BloomFilter, CombinedBloomFilter } from "./bloomfilter.js";
 var browser = browser || chrome;
 const PENDING_SUBMISSIONS = ':PENDING_SUBMISSIONS';
 const MIGRATION = ':MIGRATION';
-const CURRENT_VERSION = 100033;
+const CURRENT_VERSION = 100034;
 const badIdentifiersReasons = {};
 const badIdentifiers = {};
 // If a user labels one of these URLs, they're making a mistake. Ignore the label.
@@ -739,7 +740,7 @@ function openOptions() {
     });
 }
 function getURL(path) {
-    return browser.extension.getURL(path);
+    return chrome.runtime.getURL(path);
 }
 function sendMessageToContent(tabId, frameId, message) {
     const options = frameId === null ? undefined : { frameId: frameId };
