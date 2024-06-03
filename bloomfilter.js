@@ -1,4 +1,4 @@
-export class BloomFilter {
+class BloomFilter {
     // Creates a new bloom filter.  If *m* is an array-like object, with a length
     // property, then the bloom filter is loaded with data from the array, where
     // each element is a 32-bit integer.  Otherwise, *m* should specify the
@@ -87,7 +87,7 @@ function fnv_mix(a) {
     a += a << 5;
     return a & 0xffffffff;
 }
-export class CombinedBloomFilter {
+class CombinedBloomFilter {
     static getIdForPart(v, i) {
         return i == 0 ? v : v + '|' + i;
     }

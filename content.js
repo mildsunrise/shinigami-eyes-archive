@@ -610,6 +610,8 @@ function getIdentifierFromURLImpl(url) {
             const name = getPathPart(url.pathname, 2);
             return name ? name + '.tumblr.com' : null;
         }
+        if (url.pathname.includes('/tagged/'))
+            return null;
         if (host == 'tumblr.com' || host == 'at.tumblr.com') {
             let name = getPathPart(url.pathname, 0);
             if (!name)
@@ -623,8 +625,7 @@ function getIdentifierFromURLImpl(url) {
             return name + '.tumblr.com';
         }
         if (host != 'tumblr.com' && host != 'assets.tumblr.com' && host.indexOf('.media.') == -1) {
-            if (!url.pathname.includes('/tagged/'))
-                return url.host;
+            return url.host;
         }
         return null;
     }
@@ -641,6 +642,8 @@ function getIdentifierFromURLImpl(url) {
         if (pathname.startsWith('/wiki/Special:Contributions/') && url.href == window.location.href)
             return 'wikipedia.org/wiki/User:' + pathArray[3];
         if (pathname.startsWith('/wiki/User:'))
+            return 'wikipedia.org/wiki/User:' + pathArray[2].split(':')[1];
+        if (pathname.startsWith('/wiki/User_talk:'))
             return 'wikipedia.org/wiki/User:' + pathArray[2].split(':')[1];
         if (pathname.includes(':'))
             return null;
@@ -869,11 +872,44 @@ function displayConfirmation(identifier, label, badIdentifierReason, url, target
         confirmation.remove();
     }, 9000);
 }
+async function findTwitterNumericIdsFirefox(request) {
+    // Firefox only supports wrappedJSObject
+    return shinigamiEyesFindTwitterNumericIds(request, true);
+}
+async function findTwitterNumericIdsChrome(request) {
+    // Chrome only supports world=MAIN
+    request.requestId = crypto.randomUUID();
+    let resolve = null;
+    const handler = (event) => {
+        if (event.origin !== 'https://x.com' && event.origin !== 'https://twitter.com')
+            return;
+        if (event.data && event.data.shinigamiEyesFindTwitterNumericIdsResponse) {
+            const response = event.data.shinigamiEyesFindTwitterNumericIdsResponse;
+            if (response.requestId == request.requestId) {
+                resolve(response);
+            }
+        }
+    };
+    try {
+        window.addEventListener('message', handler);
+        const promise = new Promise(r => {
+            resolve = r;
+        });
+        window.postMessage({
+            shinigamiEyesFindTwitterNumericIdsRequest: request
+        });
+        var timeout = new Promise(resolve => setTimeout(() => resolve({ mappings: null }), 200));
+        return await Promise.race([promise, timeout]);
+    }
+    finally {
+        window.removeEventListener('message', handler);
+    }
+}
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.updateAllLabels || message.confirmSetLabel) {
         displayConfirmation(message.confirmSetIdentifier, message.confirmSetLabel, message.badIdentifierReason, message.confirmSetUrl, null);
         updateAllLabels(true);
-        return;
+        return undefined;
     }
     message.contextPage = window.location.href;
     const originalTarget = lastRightClickedElement;
@@ -888,21 +924,43 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     var identifier = target ? getIdentifier(target, originalTarget) : getIdentifier(message.url);
     if (!identifier) {
         displayConfirmation(null, 'bad-identifier', null, message.url, target);
-        return;
+        return undefined;
     }
-    message.identifier = identifier;
-    if (identifier.startsWith('facebook.com/'))
-        message.secondaryIdentifier = getIdentifier(message.url);
-    var snippet = getSnippet(target);
-    message.linkId = ++lastGeneratedLinkId;
-    if (target)
-        target.setAttribute('shinigami-eyes-link-id', '' + lastGeneratedLinkId);
-    message.snippet = snippet ? snippet.outerHTML : null;
-    var debugClass = 'shinigami-eyes-debug-snippet-highlight';
-    if (snippet && message.debug) {
-        snippet.classList.add(debugClass);
-        if (message.debug <= 1)
-            setTimeout(() => snippet.classList.remove(debugClass), 1500);
-    }
-    sendResponse(message);
+    (async () => {
+        var _a, _b;
+        message.identifier = identifier;
+        if (identifier.startsWith('facebook.com/'))
+            message.secondaryIdentifier = getIdentifier(message.url);
+        var snippet = getSnippet(target);
+        message.linkId = ++lastGeneratedLinkId;
+        if (target)
+            target.setAttribute('shinigami-eyes-link-id', '' + lastGeneratedLinkId);
+        if (hostname == 'twitter.com') {
+            try {
+                const twitterUserName = (_a = captureRegex(identifier, /^twitter\.com\/(.*)$/)) === null || _a === void 0 ? void 0 : _a.toLowerCase();
+                if (twitterUserName) {
+                    const request = {
+                        linkId: message.linkId,
+                        wantIdForScreenName: twitterUserName
+                    };
+                    const response = await findTwitterNumericIdsFirefox(request);
+                    const twitterMapping = (_b = response.mappings) === null || _b === void 0 ? void 0 : _b.filter(x => { var _a; return twitterUserName == ((_a = x.userName) === null || _a === void 0 ? void 0 : _a.toLowerCase()); })[0];
+                    if (twitterMapping)
+                        message.secondaryIdentifier = 'twitter.com/i/user/' + twitterMapping.numericId;
+                }
+            }
+            catch (error) {
+                console.warn(error);
+            }
+        }
+        message.snippet = snippet ? snippet.outerHTML : null;
+        var debugClass = 'shinigami-eyes-debug-snippet-highlight';
+        if (snippet && message.debug) {
+            snippet.classList.add(debugClass);
+            if (message.debug <= 1)
+                setTimeout(() => snippet.classList.remove(debugClass), 1500);
+        }
+        sendResponse(message);
+    })();
+    return true;
 });

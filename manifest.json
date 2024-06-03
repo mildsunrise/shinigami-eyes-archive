@@ -1,5 +1,5 @@
 {
-	"manifest_version": 3,
+	"manifest_version": 2,
 	"name": "Shinigami Eyes",
 	"author": "Shinigami Eyes",
 	"homepage_url": "https://shinigami-eyes.github.io/",
@@ -36,11 +36,11 @@
 				"*://kolektiva.social/*",
 				"*://mas.to/*",
 				"*://masto.ai/*",
+				"*://chaosfem.tw/*",
 				"*://mastodon.art/*",
 				"*://mastodon.cloud/*",
 				"*://mastodon.green/*",
 				"*://mastodon.ie/*",
-				"*://mastodon.lol/*",
 				"*://mastodon.nz/*",
 				"*://mastodon.online/*",
 				"*://mastodon.scot/*",
@@ -65,6 +65,7 @@
 				"*://toot.wales/*",
 				"*://vulpine.club/*",
 				"*://wandering.shop/*",
+				"*://lgbtqia.space/*",
 				"*://*.threads.net/*",
 				"*://duckduckgo.com/*",
 				"*://*.bing.com/*",
@@ -102,11 +103,23 @@
 			"js": [
 				"content.js"
 			]
+		},
+		{
+			"all_frames": true,
+			"matches": [
+				"https://x.com/*",
+				"https://twitter.com/*"
+			],
+			"js": [
+				"content-web.js"
+			]
 		}
 	],
 	"background": {
-		"service_worker": "background.js",
-		"type": "module"
+		"scripts": [
+			"bloomfilter.js",
+			"background.js"
+		]
 	},
 	"options_ui": {
 		"page": "options.html",
@@ -114,9 +127,7 @@
 	},
 	"permissions": [
 		"contextMenus",
-		"storage"
-	],
-	"host_permissions": [
+		"storage",
 		"*://*/*"
 	],
 	"applications": {
