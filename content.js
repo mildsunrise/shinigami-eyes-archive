@@ -41,6 +41,7 @@ function fixupSiteStyles() {
         addStyleSheet(`
             .assigned-label-transphobic { outline: 1px solid var(--ShinigamiEyesTransphobic) !important; }
             .assigned-label-t-friendly { outline: 1px solid var(--ShinigamiEyesTFriendly) !important; }
+            .vector-page-toolbar .has-assigned-label { outline-width: 2px !important; }
         `);
     }
     else if (hostname == 'twitter.com') {
@@ -95,6 +96,8 @@ function isElementVisible(x) {
     return !!x.getBoundingClientRect().width;
 }
 function linkify(oldNode, href) {
+    if (oldNode.tagName == 'A')
+        return oldNode;
     const newLink = document.createElement('a');
     newLink.textContent = oldNode.textContent;
     if (oldNode instanceof HTMLElement) {
@@ -110,11 +113,11 @@ function linkifyBlueskyLinks() {
     const toLinkify = [...document.querySelectorAll('div[aria-label][role=link][tabindex="0"] > div')].filter(x => x.childNodes.length == 1 && x.firstChild.nodeType == Node.TEXT_NODE && isElementVisible(x));
     for (const oldLink of toLinkify) {
         const identifier = (_a = oldLink.parentElement.getAttribute('aria-label')) !== null && _a !== void 0 ? _a : '';
-        if (!/^[\w\-]+\.[\w\.]+$/.test(identifier))
+        if (!/^[\w\-]+\.[\w\-\.]+$/.test(identifier))
             continue;
         linkify(oldLink, 'https://bsky.app/profile/' + identifier);
     }
-    const mobileUiToLinkify = [...document.querySelectorAll('div[dir=auto][style]')].filter(x => x.firstChild == x.lastChild && x.firstChild.nodeType == Node.TEXT_NODE && x.firstChild.textContent == '·').map(x => x.previousSibling).filter(x => { var _a; return ((_a = x.firstChild) === null || _a === void 0 ? void 0 : _a.tagName) == 'DIV' && isElementVisible(x); });
+    const mobileUiToLinkify = [...document.querySelectorAll('div[dir=auto][style]')].filter(x => { var _a; return x.firstChild == x.lastChild && ((_a = x.firstChild) === null || _a === void 0 ? void 0 : _a.nodeType) == Node.TEXT_NODE && x.firstChild.textContent == '·'; }).map(x => x.previousSibling).filter(x => { var _a; return ((_a = x.firstChild) === null || _a === void 0 ? void 0 : _a.tagName) == 'DIV' && isElementVisible(x); });
     for (const oldLink of mobileUiToLinkify) {
         const span = oldLink.querySelector('span');
         if (span && span.textContent.startsWith('@')) {
@@ -183,6 +186,7 @@ function init() {
 var lastRightClickedElement = null;
 var lastAppliedYouTubeUrl = null;
 var lastAppliedYouTubeTitle = null;
+var lastAppliedYouTubeHeaderReplacement = null;
 var lastAppliedTwitterUrl = null;
 function updateTwitterClasses() {
     if (location.href != lastAppliedTwitterUrl) {
@@ -197,12 +201,14 @@ function updateTwitterClasses() {
     }
 }
 function updateYouTubeChannelHeader() {
-    var url = window.location.href;
-    var title = document.querySelector('#channel-header ytd-channel-name yt-formatted-string');
+    let url = window.location.href;
+    let title = document.querySelector('yt-page-header-view-model h1 .yt-core-attributed-string');
     if (title && !title.parentElement.offsetParent)
         title = null;
-    var currentTitle = title ? title.textContent : null;
-    if (url == lastAppliedYouTubeUrl && currentTitle == lastAppliedYouTubeTitle)
+    const currentTitle = title ? title.textContent : null;
+    if (url == lastAppliedYouTubeUrl &&
+        currentTitle == lastAppliedYouTubeTitle &&
+        !(currentTitle && lastAppliedYouTubeHeaderReplacement && !lastAppliedYouTubeHeaderReplacement.offsetParent))
         return;
     lastAppliedYouTubeUrl = url;
     lastAppliedYouTubeTitle = currentTitle;
@@ -214,14 +220,15 @@ function updateYouTubeChannelHeader() {
             replacement.className = title.className;
             title.parentNode.insertBefore(replacement, title.nextSibling);
             title.style.display = 'none';
-            replacement.style.fontSize = '2.4rem';
-            replacement.style.fontWeight = '400';
-            replacement.style.lineHeight = '3rem';
+            replacement.style.fontSize = '36px';
+            replacement.style.fontWeight = '700';
+            replacement.style.lineHeight = '50px';
             replacement.style.textDecoration = 'none';
             replacement.style.color = 'var(--yt-spec-text-primary)';
         }
         replacement.textContent = lastAppliedYouTubeTitle;
         replacement.href = lastAppliedYouTubeUrl;
+        lastAppliedYouTubeHeaderReplacement = replacement;
     }
     updateAllLabels();
     setTimeout(updateAllLabels, 2000);
@@ -361,11 +368,19 @@ function isFacebookPictureLink(element) {
     return href && (href.includes('/photo/') || href.includes('/photo.php'));
 }
 function getIdentifierFromElementImpl(element, originalTarget) {
+    var _a, _b, _c, _d, _e, _f;
     if (!element)
         return null;
     const dataset = element.dataset;
     if (hostname == 'bsky.app') {
         if (element.href.includes('/profile/did:')) {
+            if (((_a = element.parentElement) === null || _a === void 0 ? void 0 : _a.getAttribute('data-testid')) == 'profileHeaderDisplayName') {
+                const profileHeaderHandle = (_e = (_d = (_c = (_b = element.parentElement) === null || _b === void 0 ? void 0 : _b.parentElement) === null || _c === void 0 ? void 0 : _c.nextSibling) === null || _d === void 0 ? void 0 : _d.firstChild) === null || _e === void 0 ? void 0 : _e.firstChild;
+                const profileHeaderHandleText = (_f = profileHeaderHandle.textContent) === null || _f === void 0 ? void 0 : _f.trim();
+                if (profileHeaderHandle && profileHeaderHandleText.startsWith('@') && !profileHeaderHandleText.includes(' ') && !profileHeaderHandle.firstChild) {
+                    return profileHeaderHandleText.substring(1);
+                }
+            }
             const identifier = element.textContent.trim();
             if (identifier.startsWith('@')) {
                 return identifier.substring(1);
@@ -527,7 +542,36 @@ function tryUnwrapNestedURL(url) {
     return null;
 }
 const MASTODON_FALSE_POSITIVES = ['tiktok.com', 'youtube.com', 'medium.com', 'foundation.app', 'pronouns.page'];
+function tryUnwrapSuffix(str, suffix) {
+    return str && str.endsWith(suffix) ? str.substring(0, str.length - suffix.length) : null;
+}
+function tryUnwrapPrefix(str, prefix) {
+    return str && str.startsWith(prefix) ? str.substring(prefix.length) : null;
+}
 function getIdentifierFromURLImpl(url) {
+    const identifier = getIdentifierFromURLIgnoreBridges(url);
+    if (identifier) {
+        const wrappedBskyAccount = tryUnwrapPrefix(identifier, 'bsky.brid.gy/@');
+        if (wrappedBskyAccount)
+            return wrappedBskyAccount;
+        const wrappedSite = tryUnwrapPrefix(identifier, 'web.brid.gy/@');
+        if (wrappedSite)
+            return wrappedSite;
+    }
+    if (identifier && !identifier.includes('/')) {
+        const mastodonBridge = tryUnwrapSuffix(identifier, '.ap.brid.gy');
+        if (mastodonBridge) {
+            const dot = mastodonBridge.indexOf('.');
+            if (dot != -1)
+                return mastodonBridge.substring(dot + 1) + '/@' + mastodonBridge.substring(0, dot);
+        }
+        const webBridge = tryUnwrapSuffix(identifier, '.web.brid.gy');
+        if (webBridge)
+            return webBridge;
+    }
+    return identifier;
+}
+function getIdentifierFromURLIgnoreBridges(url) {
     if (!url)
         return null;
     // nested urls
@@ -641,9 +685,9 @@ function getIdentifierFromURLImpl(url) {
         }
         if (pathname.startsWith('/wiki/Special:Contributions/') && url.href == window.location.href)
             return 'wikipedia.org/wiki/User:' + pathArray[3];
-        if (pathname.startsWith('/wiki/User:'))
+        if (pathname.startsWith('/wiki/User:') && !pathArray[3])
             return 'wikipedia.org/wiki/User:' + pathArray[2].split(':')[1];
-        if (pathname.startsWith('/wiki/User_talk:'))
+        if (pathname.startsWith('/wiki/User_talk:') && !pathArray[3])
             return 'wikipedia.org/wiki/User:' + pathArray[2].split(':')[1];
         if (pathname.includes(':'))
             return null;
@@ -798,6 +842,8 @@ function getBadIdentifierReason(identifier, url, target) {
         if (nested)
             url = nested.href;
     }
+    if (url.includes('/bsky.app/profile/did:'))
+        return 'Try labeling this user from one of their posts instead.\nDetails: could not convert "did:" URL to handle.';
     if (identifier == 't.co')
         return 'Shortened link. Please follow the link and then mark the resulting page.';
     if (identifier.startsWith('reddit.com/user/') ||
@@ -856,7 +902,9 @@ function displayConfirmation(identifier, label, badIdentifierReason, url, target
 `;
     }
     else {
-        const suffix = (isMastodon && !colorLinks) ? 'on supported Mastodon instances.' : 'on search engines and social networks.';
+        const suffix = (isMastodon && !colorLinks) ? 'on supported Mastodon instances.' :
+            (domainIs(hostname, 'tumblr.com') && !colorLinks) ? 'on the Tumblr dashboard.' :
+                'on search engines and social networks.';
         text = identifier + (label == 't-friendly' ? ' will be displayed as trans-friendly ' + suffix :
             label == 'transphobic' ? ' will be displayed as anti-trans ' + suffix :
                 ' has been cleared.');
@@ -943,7 +991,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         linkId: message.linkId,
                         wantIdForScreenName: twitterUserName
                     };
-                    const response = await findTwitterNumericIdsChrome(request);
+                    const response = await findTwitterNumericIdsFirefox(request);
                     const twitterMapping = (_b = response.mappings) === null || _b === void 0 ? void 0 : _b.filter(x => { var _a; return twitterUserName == ((_a = x.userName) === null || _a === void 0 ? void 0 : _a.toLowerCase()); })[0];
                     if (twitterMapping)
                         message.secondaryIdentifier = 'twitter.com/i/user/' + twitterMapping.numericId;

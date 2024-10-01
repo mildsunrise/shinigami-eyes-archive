@@ -1,5 +1,5 @@
 {
-	"manifest_version": 3,
+	"manifest_version": 2,
 	"name": "Shinigami Eyes",
 	"author": "Shinigami Eyes",
 	"homepage_url": "https://shinigami-eyes.github.io/",
@@ -19,10 +19,10 @@
 				"*://*.x.com/*",
 				"*://*.medium.com/*",
 				"*://disqus.com/*",
-				"*://*.tumblr.com/*",
+				"*://tumblr.com/*",
+				"*://www.tumblr.com/*",
 				"*://*.wikipedia.org/*",
 				"*://*.rationalwiki.org/*",
-				"*://cohost.org/*",
 				"*://*.bsky.app/*",
 				"*://anarchism.space/*",
 				"*://aus.social/*",
@@ -110,15 +110,16 @@
 				"https://x.com/*",
 				"https://twitter.com/*"
 			],
-			"world": "MAIN",
 			"js": [
 				"content-web.js"
 			]
 		}
 	],
 	"background": {
-		"service_worker": "background.js",
-		"type": "module"
+		"scripts": [
+			"bloomfilter.js",
+			"background.js"
+		]
 	},
 	"options_ui": {
 		"page": "options.html",
@@ -126,9 +127,7 @@
 	},
 	"permissions": [
 		"contextMenus",
-		"storage"
-	],
-	"host_permissions": [
+		"storage",
 		"*://*/*"
 	],
 	"applications": {
