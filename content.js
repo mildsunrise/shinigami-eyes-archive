@@ -991,7 +991,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         linkId: message.linkId,
                         wantIdForScreenName: twitterUserName
                     };
-                    const response = await findTwitterNumericIdsFirefox(request);
+                    const response = await findTwitterNumericIdsChrome(request);
                     const twitterMapping = (_b = response.mappings) === null || _b === void 0 ? void 0 : _b.filter(x => { var _a; return twitterUserName == ((_a = x.userName) === null || _a === void 0 ? void 0 : _a.toLowerCase()); })[0];
                     if (twitterMapping)
                         message.secondaryIdentifier = 'twitter.com/i/user/' + twitterMapping.numericId;

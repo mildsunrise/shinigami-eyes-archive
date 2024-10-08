@@ -1,7 +1,8 @@
+import { BloomFilter, CombinedBloomFilter } from "./bloomfilter.js";
 var browser = browser || chrome;
 const PENDING_SUBMISSIONS = ':PENDING_SUBMISSIONS';
 const MIGRATION = ':MIGRATION';
-const CURRENT_VERSION = 100037;
+const CURRENT_VERSION = 100038;
 const BUNDLED_BLOOM_FILTER_VERSION = 24092900;
 const badIdentifiersReasons = {};
 const badIdentifiers = {};
@@ -853,7 +854,7 @@ function openOptions() {
     });
 }
 function getURL(path) {
-    return browser.extension.getURL(path);
+    return chrome.runtime.getURL(path);
 }
 function sendMessageToContent(tabId, frameId, message) {
     const options = frameId === null ? undefined : { frameId: frameId };
